@@ -1,3 +1,13 @@
+---
+title: AI Visibility Audit
+emoji: 🔍
+colorFrom: red
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # AI Visibility Audit Agent
 
 Real agent that scans brand visibility across AI search platforms using **Browserbase** + **Claude** + **GEO recommendations**.
