@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ai-visibility-audit
+    runtime: python
+    buildCommand: pip install -r requirements.txt && playwright install chromium --with-deps
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 180 --workers 2
+    envVars:
+      - key: BROWSERBASE_API_KEY
+        sync: false
+      - key: BROWSERBASE_PROJECT_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /api/health
