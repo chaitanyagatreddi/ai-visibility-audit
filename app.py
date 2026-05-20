@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""
+AI Visibility Audit - Web App
+===============================
+Flask web app wrapping the audit agent.
+Enter a brand name, get a live AI visibility report.
+
+Run locally:
+  pip3 install flask
+  export BROWSERBASE_API_KEY=... BROWSERBASE_PROJECT_ID=... ANTHROPIC_API_KEY=...
+  python3 app.py
+
+Deploy anywhere: Replit, Railway, Render, Vercel (serverless).
+"""
+
+import asyncio
+import json
+import os
+import sys
+import traceback
+from datetime import datetime
+
+try:
+    from flask import Flask, render_template_string, request, jsonify
+except ImportError:
+    print("pip3 install flask")
+    sys.exit(1)
+
+from agent import AIVisibilityAgent
+from scanner import KNOWN_BRANDS, QUERY_TEMPLATES
+
+app = Flask(__name__)
+
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Visibility Audit | Crazyheads 2.0 x Writesonic</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); padding: 2rem; text-align: center; border-bottom: 2px solid #e94560; }
+  .header h1 { font-size: 1.8rem; color: #fff; margin-bottom: 0.3rem; }
+  .header .subtitle { color: #e94560; font-size: 0.9rem; letter-spacing: 2px; text-transform: uppercase; }
+  .header .tagline { color: #888; font-size: 0.85rem; margin-top: 0.5rem; }
+
+  .container { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+
+  .form-card { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; }
+  .form-row { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .form-group { flex: 1; min-width: 200px; }
+  .form-group label { display: block; color: #888; font-size: 0.8rem; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 1px; }
+  .form-group input, .form-group select { width: 100%; padding: 0.75rem 1rem; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 1rem; }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #e94560; }
+
+  .btn { background: #e94560; color: #fff; border: none; padding: 0.85rem 2rem; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+  .btn:hover { background: #c73550; transform: translateY(-1px); }
+  .btn:disabled { background: #444; cursor: not-allowed; transform: none; }
+  .btn-row { text-align: center; margin-top: 1.5rem; }
+
+  .progress { display: none; margin: 2rem 0; }
+  .progress.active { display: block; }
+  .progress-bar { height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #e94560, #ff6b81); width: 0%; transition: width 0.5s; border-radius: 2px; }
+  .progress-text { color: #888; font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+
+  .report { display: none; }
+  .report.active { display: block; }
+
+  .score-card { background: linear-gradient(135deg, #141414, #1a1a2e); border: 1px solid #2a2a2a; border-radius: 12px; padding: 2rem; text-align: center; margin-bottom: 2rem; }
+  .score-number { font-size: 4rem; font-weight: 800; }
+  .score-low { color: #e94560; }
+  .score-mid { color: #ffa502; }
+  .score-high { color: #2ed573; }
+  .score-label { color: #888; font-size: 0.9rem; margin-top: 0.3rem; }
+
+  .section { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .section h3 { color: #fff; margin-bottom: 1rem; font-size: 1.1rem; }
+
+  .query-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid #1a1a1a; }
+  .query-row:last-child { border-bottom: none; }
+  .query-status { font-size: 1.2rem; }
+  .query-text { flex: 1; font-size: 0.9rem; }
+  .query-brands { color: #888; font-size: 0.8rem; }
+
+  .competitor-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.4rem 0; }
+  .competitor-name { width: 150px; font-size: 0.9rem; text-align: right; }
+  .competitor-fill { height: 20px; background: linear-gradient(90deg, #e94560, #ff6b81); border-radius: 4px; min-width: 4px; transition: width 0.5s; }
+  .competitor-count { color: #888; font-size: 0.8rem; margin-left: 0.5rem; }
+
+  .gap-item { padding: 0.75rem; background: #1a1a1a; border-radius: 8px; margin-bottom: 0.5rem; border-left: 3px solid #e94560; }
+  .gap-item.medium { border-left-color: #ffa502; }
+  .gap-query { font-size: 0.9rem; margin-bottom: 0.3rem; }
+  .gap-competitors { color: #888; font-size: 0.8rem; }
+
+  .rec-item { padding: 1rem; background: #1a1a1a; border-radius: 8px; margin-bottom: 0.75rem; }
+  .rec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .rec-strategy { font-weight: 600; color: #fff; }
+  .rec-lift { color: #2ed573; font-size: 0.85rem; font-weight: 600; }
+  .rec-desc { color: #aaa; font-size: 0.85rem; margin-bottom: 0.3rem; }
+  .rec-action { color: #e94560; font-size: 0.85rem; font-style: italic; }
+
+  .footer { text-align: center; padding: 2rem; color: #444; font-size: 0.8rem; }
+  .footer a { color: #e94560; text-decoration: none; }
+
+  .error { background: #2a1a1a; border: 1px solid #e94560; border-radius: 8px; padding: 1rem; color: #ff6b81; margin: 1rem 0; display: none; }
+  .error.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>AI Visibility Audit</h1>
+  <div class="subtitle">Generative Engine Optimization Scanner</div>
+  <div class="tagline">See where your brand appears (and disappears) in AI search answers</div>
+</div>
+
+<div class="container">
+  <div class="form-card">
+    <div class="form-row">
+      <div class="form-group" style="min-width:100%">
+        <label>Website URL (or just enter brand name below)</label>
+        <input type="text" id="url" placeholder="https://freshworks.com or https://exotel.com">
+      </div>
+      <div class="form-group">
+        <label>Brand Name <span style="color:#555">(auto-detected from URL)</span></label>
+        <input type="text" id="brand" placeholder="e.g. Freshworks, Exotel, Kapiva">
+      </div>
+      <div class="form-group">
+        <label>Industry</label>
+        <select id="industry">
+          <option value="">Auto-detect</option>
+          <option value="saas">SaaS / Software</option>
+          <option value="d2c_fashion">D2C Fashion</option>
+          <option value="health_wellness">Health & Wellness</option>
+          <option value="fintech">Fintech</option>
+          <option value="edtech">Edtech</option>
+          <option value="ecommerce">E-commerce</option>
+          <option value="agency">Agency</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>City</label>
+        <input type="text" id="city" placeholder="bangalore" value="bangalore">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="scanBtn" onclick="startAudit()">Run AI Visibility Audit</button>
+    </div>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">Starting Browserbase session...</div>
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <div class="report" id="report">
+    <div class="score-card">
+      <div class="score-number" id="scoreNumber">--</div>
+      <div class="score-label">AI Visibility Score (out of 100)</div>
+    </div>
+
+    <div class="section">
+      <h3>Visibility by Query</h3>
+      <div id="queryResults"></div>
+    </div>
+
+    <div class="section">
+      <h3>Competitor Leaderboard</h3>
+      <div id="competitors"></div>
+    </div>
+
+    <div class="section">
+      <h3>Visibility Gaps</h3>
+      <div id="gaps"></div>
+    </div>
+
+    <div class="section">
+      <h3>GEO Recommendations</h3>
+      <div id="recommendations"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Powered by <a href="#">Browserbase</a> + Claude + Writesonic GEO Engine<br>
+  Crazyheads 2.0 &mdash; AI Visibility Services for Bangalore Brands
+</div>
+
+<script>
+async function startAudit() {
+  const url = document.getElementById('url').value.trim();
+  const brand = document.getElementById('brand').value.trim();
+  const industry = document.getElementById('industry').value;
+  const city = document.getElementById('city').value.trim() || 'bangalore';
+
+  if (!brand && !url) { alert('Enter a website URL or brand name'); return; }
+
+  const btn = document.getElementById('scanBtn');
+  const progress = document.getElementById('progress');
+  const report = document.getElementById('report');
+  const error = document.getElementById('error');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  progress.classList.add('active');
+  report.classList.remove('active');
+  error.classList.remove('active');
+
+  // Simulate progress
+  let pct = 0;
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  const stages = [
+    [10, 'Starting Browserbase session...'],
+    [25, 'Scanning Google AI Overviews...'],
+    [45, 'Scanning Perplexity AI...'],
+    [65, 'Claude analyzing brand mentions...'],
+    [80, 'Calculating visibility score...'],
+    [90, 'Generating GEO recommendations...'],
+  ];
+  let stageIdx = 0;
+  const ticker = setInterval(() => {
+    if (stageIdx < stages.length) {
+      pct = stages[stageIdx][0];
+      progressText.textContent = stages[stageIdx][1];
+      progressFill.style.width = pct + '%';
+      stageIdx++;
+    }
+  }, 3000);
+
+  try {
+    const resp = await fetch('/api/audit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({brand, industry, city, url, max_queries: 3})
+    });
+    clearInterval(ticker);
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Done!';
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Scan failed');
+    }
+
+    const data = await resp.json();
+    renderReport(data);
+
+  } catch (e) {
+    clearInterval(ticker);
+    error.textContent = 'Error: ' + e.message;
+    error.classList.add('active');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Run AI Visibility Audit';
+  setTimeout(() => progress.classList.remove('active'), 2000);
+}
+
+function renderReport(r) {
+  const report = document.getElementById('report');
+  report.classList.add('active');
+
+  // Score
+  const scoreEl = document.getElementById('scoreNumber');
+  const score = r.visibility_score || 0;
+  scoreEl.textContent = score.toFixed(1);
+  scoreEl.className = 'score-number ' + (score < 30 ? 'score-low' : score < 60 ? 'score-mid' : 'score-high');
+
+  // Queries
+  const qDiv = document.getElementById('queryResults');
+  qDiv.innerHTML = (r.queries || []).map(q => {
+    const visible = (q.mentions || []).some(m => m.brand && m.brand.toLowerCase() === r.brand.toLowerCase());
+    return '<div class="query-row">' +
+      '<span class="query-status">' + (visible ? '✅' : '❌') + '</span>' +
+      '<div><div class="query-text">' + q.query + '</div>' +
+      '<div class="query-brands">Brands: ' + (q.brands_found || []).slice(0,5).join(', ') + '</div></div></div>';
+  }).join('');
+
+  // Competitors
+  const cDiv = document.getElementById('competitors');
+  const comps = r.competitor_mentions || {};
+  const maxCount = Math.max(...Object.values(comps), 1);
+  cDiv.innerHTML = Object.entries(comps).slice(0,8).map(([name, count]) =>
+    '<div class="competitor-bar">' +
+    '<span class="competitor-name">' + name + '</span>' +
+    '<div class="competitor-fill" style="width:' + (count/maxCount*200) + 'px"></div>' +
+    '<span class="competitor-count">' + count + '</span></div>'
+  ).join('');
+
+  // Gaps
+  const gDiv = document.getElementById('gaps');
+  gDiv.innerHTML = (r.gaps || []).map(g =>
+    '<div class="gap-item ' + (g.severity || '') + '">' +
+    '<div class="gap-query">' + (g.severity === 'high' ? '🔴' : '🟡') + ' ' + g.query + '</div>' +
+    '<div class="gap-competitors">Competitors visible: ' + (g.competitors_visible || []).slice(0,3).join(', ') + '</div></div>'
+  ).join('') || '<p style="color:#888">No gaps found - great AI visibility!</p>';
+
+  // Recommendations
+  const rDiv = document.getElementById('recommendations');
+  rDiv.innerHTML = (r.recommendations || []).slice(0,5).map(rec =>
+    '<div class="rec-item">' +
+    '<div class="rec-header"><span class="rec-strategy">' + (rec.strategy||'').replace(/_/g,' ').replace(/\\b\\w/g,l=>l.toUpperCase()) + '</span>' +
+    '<span class="rec-lift">' + (rec.expected_lift||'') + '</span></div>' +
+    '<div class="rec-desc">' + (rec.description||'') + '</div>' +
+    (rec.specific_action ? '<div class="rec-action">' + rec.specific_action + '</div>' : '') + '</div>'
+  ).join('');
+}
+</script>
+</body>
+</html>"""
+
+
+@app.route("/")
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+
+@app.route("/api/audit", methods=["POST"])
+def run_audit():
+    data = request.json
+    brand = data.get("brand", "").strip()
+    industry = data.get("industry", "")
+    city = data.get("city", "bangalore")
+    url = data.get("url", "").strip()
+    max_queries = min(data.get("max_queries", 3), 5)
+
+    if not brand and not url:
+        return jsonify({"error": "Brand name or URL required"}), 400
+
+    try:
+        agent = AIVisibilityAgent(
+            brand=brand,
+            industry=industry,
+            city=city,
+            url=url,
+            max_queries=max_queries,
+        )
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        report = loop.run_until_complete(agent.run())
+        loop.close()
+        return jsonify(report)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "browserbase": bool(os.environ.get("BROWSERBASE_API_KEY")),
+        "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5001))
+    print(f"\n🤖 AI Visibility Audit Agent")
+    print(f"   http://localhost:{port}")
+    print(f"   Browserbase: {'✅' if os.environ.get('BROWSERBASE_API_KEY') else '❌'}")
+    print(f"   Anthropic: {'✅' if os.environ.get('ANTHROPIC_API_KEY') else '❌'}")
+    app.run(host="0.0.0.0", port=port, debug=True)
