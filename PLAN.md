@@ -40,6 +40,33 @@ Build a Writesonic feature (or agent) that helps an agency like Crazyheads 2.0:
 - Shows domain knowledge: used Writesonic's own SEO growth (2K to 5K+ keywords) as proof
 - Shows customer empathy: Crazyheads is a real agency story, not a hypothetical
 
+## JD Key Signals (AI Product Manager)
+
+**What they want:**
+- Builder PM who prototypes, not just specs. Uses Claude Code, Cursor to ship working solutions.
+- Own roadmap for core organic growth platform features
+- Continuous discovery: user interviews, data analysis, competitor research
+- Track competitors obsessively: ChatGPT, Perplexity, Google AI platform changes
+- Live in analytics daily (Amplitude, Mixpanel)
+- Prototype in hours, not weeks
+- Cross-functional: eng, design, marketing, sales
+
+**Must-haves:**
+- 3+ years product at fast-moving startup (AI preferred)
+- Hands-on AI coding tools (Claude Code, Cursor)
+- Some engineering background
+- Strong UX instincts
+- Data-driven daily
+- AI fluency non-negotiable
+
+**How our demo maps to the JD:**
+- "Builder PM who ships" -- we're literally building a working agent, not a deck
+- "Own roadmap for organic growth" -- GEO SEO IS the organic growth roadmap
+- "Track competitors obsessively" -- the agent scans competitor visibility in AI answers
+- "AI fluency" -- built with Claude Code, Browserbase, multi-agent orchestration
+- "Prototype in hours" -- this IS the prototype
+- "User interviews + data" -- Crazyheads scenario is grounded in real agency pain
+
 ## Open Questions
 
 - What's the exact feature surface? Dashboard? Agent? CLI?
