@@ -78,6 +78,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
   .agent-row.running { animation: pulse 1.5s ease-in-out infinite; }
 
+  .cost-card { background: linear-gradient(135deg, #2a1a1a 0%, #1a1a2e 100%); border: 1px solid #e94560; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
+  .cost-card h3 { color: #e94560; margin-bottom: 1rem; font-size: 1rem; }
+  .cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+  .cost-stat { text-align: center; padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; }
+  .cost-stat .number { font-size: 1.6rem; font-weight: 700; color: #e94560; }
+  .cost-stat .label { font-size: 0.75rem; color: #888; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 1px; }
+  .cost-note { color: #666; font-size: 0.75rem; margin-top: 1rem; font-style: italic; }
+
   .progress { display: none; margin: 2rem 0; }
   .progress.active { display: block; }
   .progress-bar { height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
@@ -186,6 +194,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="score-card">
       <div class="score-number" id="scoreNumber">--</div>
       <div class="score-label">AI Visibility Score (out of 100)</div>
+    </div>
+
+    <div class="cost-card" id="costCard">
+      <h3>💰 Cost of Inaction</h3>
+      <div class="cost-grid" id="costGrid"></div>
+      <div class="cost-note">Estimates based on industry avg search volumes and AI answer click-through rates (Authoritas 2024 study).</div>
     </div>
 
     <div class="section">
@@ -307,6 +321,23 @@ function renderReport(r) {
   const score = r.visibility_score || 0;
   scoreEl.textContent = score.toFixed(1);
   scoreEl.className = 'score-number ' + (score < 30 ? 'score-low' : score < 60 ? 'score-mid' : 'score-high');
+
+  // Cost of Inaction
+  const totalQueries = (r.queries || []).length;
+  const invisibleQueries = (r.queries || []).filter(q => !(q.mentions || []).some(m => m.brand && m.brand.toLowerCase() === r.brand.toLowerCase())).length;
+  const competitorCount = Object.keys(r.competitor_mentions || {}).length;
+  const avgMonthlySearches = totalQueries * 2400;
+  const aiClickRate = 0.38;
+  const missedClicks = Math.round(invisibleQueries * 2400 * aiClickRate);
+  const missedLeads = Math.round(missedClicks * 0.03);
+  const missedRevenue = missedLeads * 120;
+  const costGrid = document.getElementById('costGrid');
+  costGrid.innerHTML =
+    '<div class="cost-stat"><div class="number">' + invisibleQueries + '/' + totalQueries + '</div><div class="label">Queries Invisible</div></div>' +
+    '<div class="cost-stat"><div class="number">' + missedClicks.toLocaleString() + '</div><div class="label">Missed Clicks/Month</div></div>' +
+    '<div class="cost-stat"><div class="number">' + missedLeads.toLocaleString() + '</div><div class="label">Lost Leads/Month</div></div>' +
+    '<div class="cost-stat"><div class="number">$' + missedRevenue.toLocaleString() + '</div><div class="label">Revenue at Risk/Month</div></div>' +
+    '<div class="cost-stat"><div class="number">' + competitorCount + '</div><div class="label">Competitors Ahead</div></div>';
 
   // Queries
   const qDiv = document.getElementById('queryResults');
