@@ -38,7 +38,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Visibility Audit | Crazyheads 2.0 x Writesonic</title>
+<title>AI Visibility Audit | Batman</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
@@ -211,8 +211,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div class="footer">
-  Powered by <a href="#">Browserbase</a> + Claude + Writesonic GEO Engine<br>
-  Crazyheads 2.0 &mdash; AI Visibility Services for Bangalore Brands
+  Powered by <a href="#">Browserbase</a> + OpenAI + GEO Engine<br>
+  Batman &mdash; AI Visibility Services
 </div>
 
 <script>
