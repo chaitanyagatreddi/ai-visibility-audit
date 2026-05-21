@@ -21,10 +21,12 @@ import traceback
 from datetime import datetime
 
 try:
-    from flask import Flask, render_template_string, request, jsonify
+    from flask import Flask, render_template_string, request, jsonify, Response
 except ImportError:
     print("pip3 install flask")
     sys.exit(1)
+import queue
+import threading
 
 from agent import AIVisibilityAgent
 from scanner import KNOWN_BRANDS, QUERY_TEMPLATES
@@ -59,6 +61,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .btn:hover { background: #c73550; transform: translateY(-1px); }
   .btn:disabled { background: #444; cursor: not-allowed; transform: none; }
   .btn-row { text-align: center; margin-top: 1.5rem; }
+
+  .agents-panel { display: none; margin: 2rem 0; background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 1.5rem; }
+  .agents-panel.active { display: block; }
+  .agents-panel h3 { color: #e94560; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 1rem; }
+  .agent-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; margin: 0.3rem 0; background: #1a1a1a; border-radius: 8px; border-left: 3px solid #333; font-size: 0.85rem; transition: all 0.3s; }
+  .agent-row.running { border-left-color: #f0c040; }
+  .agent-row.done { border-left-color: #4ade80; }
+  .agent-row.error { border-left-color: #e94560; }
+  .agent-icon { width: 20px; text-align: center; }
+  .agent-label { color: #ccc; font-weight: 600; min-width: 140px; }
+  .agent-detail { color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-row.running .agent-icon::after { content: '⏳'; }
+  .agent-row.done .agent-icon::after { content: '✅'; }
+  .agent-row.error .agent-icon::after { content: '❌'; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .agent-row.running { animation: pulse 1.5s ease-in-out infinite; }
 
   .progress { display: none; margin: 2rem 0; }
   .progress.active { display: block; }
@@ -157,6 +175,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="progress-text" id="progressText">Starting Browserbase session...</div>
   </div>
 
+  <div class="agents-panel" id="agentsPanel">
+    <h3>🤖 Agent Swarm</h3>
+    <div id="agentsList"></div>
+  </div>
+
   <div class="error" id="error"></div>
 
   <div class="report" id="report">
@@ -202,65 +225,77 @@ async function startAudit() {
   if (!brand && !url) { alert('Enter a website URL or brand name'); return; }
 
   const btn = document.getElementById('scanBtn');
-  const progress = document.getElementById('progress');
+  const agentsPanel = document.getElementById('agentsPanel');
+  const agentsList = document.getElementById('agentsList');
   const report = document.getElementById('report');
   const error = document.getElementById('error');
 
   btn.disabled = true;
-  btn.textContent = 'Scanning...';
-  progress.classList.add('active');
+  btn.textContent = 'Agents Running...';
+  agentsPanel.classList.add('active');
+  agentsList.innerHTML = '';
   report.classList.remove('active');
   error.classList.remove('active');
 
-  // Simulate progress
-  let pct = 0;
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
-  const stages = [
-    [10, 'Starting Browserbase session...'],
-    [25, 'Scanning Google AI Overviews...'],
-    [45, 'Scanning Perplexity AI...'],
-    [65, 'Claude analyzing brand mentions...'],
-    [80, 'Calculating visibility score...'],
-    [90, 'Generating GEO recommendations...'],
-  ];
-  let stageIdx = 0;
-  const ticker = setInterval(() => {
-    if (stageIdx < stages.length) {
-      pct = stages[stageIdx][0];
-      progressText.textContent = stages[stageIdx][1];
-      progressFill.style.width = pct + '%';
-      stageIdx++;
+  function updateAgent(id, status, label, detail) {
+    let row = document.getElementById('agent-' + id);
+    if (!row) {
+      row = document.createElement('div');
+      row.id = 'agent-' + id;
+      row.className = 'agent-row ' + status;
+      row.innerHTML = '<span class="agent-icon"></span><span class="agent-label">' + label + '</span><span class="agent-detail">' + detail + '</span>';
+      agentsList.appendChild(row);
+    } else {
+      row.className = 'agent-row ' + status;
+      row.querySelector('.agent-detail').textContent = detail;
     }
-  }, 3000);
+    row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }
 
   try {
-    const resp = await fetch('/api/audit', {
+    const resp = await fetch('/api/audit/stream', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({brand, industry, city, url, max_queries: 3})
     });
-    clearInterval(ticker);
-    progressFill.style.width = '100%';
-    progressText.textContent = 'Done!';
 
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error || 'Scan failed');
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop();
+
+      for (const block of lines) {
+        if (!block.trim()) continue;
+        const eventMatch = block.match(/^event: (.+)$/m);
+        const dataMatch = block.match(/^data: (.+)$/m);
+        if (!eventMatch || !dataMatch) continue;
+        const eventType = eventMatch[1];
+        const payload = JSON.parse(dataMatch[1]);
+
+        if (eventType === 'agent') {
+          updateAgent(payload.id, payload.status, payload.label, payload.detail);
+        } else if (eventType === 'result') {
+          renderReport(payload);
+        } else if (eventType === 'error') {
+          error.textContent = 'Error: ' + payload.error;
+          error.classList.add('active');
+        }
+      }
     }
-
-    const data = await resp.json();
-    renderReport(data);
-
   } catch (e) {
-    clearInterval(ticker);
     error.textContent = 'Error: ' + e.message;
     error.classList.add('active');
   }
 
   btn.disabled = false;
   btn.textContent = 'Run AI Visibility Audit';
-  setTimeout(() => progress.classList.remove('active'), 2000);
 }
 
 function renderReport(r) {
@@ -351,6 +386,113 @@ def run_audit():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/audit/stream", methods=["POST"])
+def run_audit_stream():
+    """SSE streaming endpoint - shows agent steps live."""
+    data = request.json
+    brand = data.get("brand", "").strip()
+    industry = data.get("industry", "")
+    city = data.get("city", "bangalore")
+    url = data.get("url", "").strip()
+    max_queries = min(data.get("max_queries", 3), 5)
+
+    if not brand and not url:
+        return jsonify({"error": "Brand name or URL required"}), 400
+
+    q = queue.Queue()
+
+    def emit(event_type, payload):
+        q.put(f"event: {event_type}\ndata: {json.dumps(payload)}\n\n")
+
+    def run_agent():
+        try:
+            agent = AIVisibilityAgent(
+                brand=brand, industry=industry, city=city,
+                url=url, max_queries=max_queries,
+            )
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # Phase 0: detect brand
+            if url and not brand:
+                emit("agent", {"id": "brand-detector", "status": "running", "label": "Brand Detector", "detail": f"Analyzing {url}"})
+                info = agent.analyzer.detect_brand_from_url(url)
+                agent.brand = info.get("brand", "Unknown")
+                agent.industry = agent.industry or info.get("industry", "other")
+                emit("agent", {"id": "brand-detector", "status": "done", "label": "Brand Detector", "detail": f"{agent.brand} ({agent.industry})"})
+
+            # Phase 1: generate queries
+            emit("agent", {"id": "query-gen", "status": "running", "label": "Query Generator", "detail": "Generating search queries..."})
+            from scanner import QUERY_TEMPLATES, generate_queries
+            if agent.industry in QUERY_TEMPLATES and not agent.url:
+                queries = generate_queries(agent.brand, agent.industry, agent.city)[:max_queries]
+            else:
+                queries = agent.analyzer.generate_smart_queries(agent.brand, agent.industry, agent.city, agent.url, max_queries)
+            emit("agent", {"id": "query-gen", "status": "done", "label": "Query Generator", "detail": f"{len(queries)} queries ready"})
+            emit("queries", {"queries": queries})
+
+            # Phase 2: start browser
+            emit("agent", {"id": "browser", "status": "running", "label": "Browserbase", "detail": "Starting cloud browser..."})
+            loop.run_until_complete(agent.scanner.start())
+            emit("agent", {"id": "browser", "status": "done", "label": "Browserbase", "detail": "Browser ready"})
+
+            # Phase 3: parallel scans per query
+            for i, query in enumerate(queries):
+                gid = f"google-{i}"
+                pid = f"perplexity-{i}"
+                emit("agent", {"id": gid, "status": "running", "label": f"Google AIO Scanner", "detail": query[:50]})
+                emit("agent", {"id": pid, "status": "running", "label": f"Perplexity Scanner", "detail": query[:50]})
+
+                g_result = loop.run_until_complete(agent.scanner.scan_google(query))
+                agent.scan_results.append(g_result)
+                g_status = "✅ AI Overview found" if g_result.ai_answer_present else "No AI Overview"
+                emit("agent", {"id": gid, "status": "done", "label": "Google AIO Scanner", "detail": f"{g_status} ({g_result.scan_time_ms}ms)"})
+
+                p_result = loop.run_until_complete(agent.scanner.scan_perplexity(query))
+                agent.scan_results.append(p_result)
+                p_status = "✅ Answer found" if p_result.ai_answer_present else "No answer"
+                emit("agent", {"id": pid, "status": "done", "label": "Perplexity Scanner", "detail": f"{p_status} ({p_result.scan_time_ms}ms)"})
+
+            # Phase 4: LLM analysis
+            for sr in agent.scan_results:
+                if sr.raw_text and len(sr.raw_text) > 20:
+                    aid = f"analyze-{sr.platform}-{sr.query[:20]}"
+                    emit("agent", {"id": aid, "status": "running", "label": "LLM Analyzer", "detail": f"{sr.platform}: {sr.query[:40]}"})
+                    analysis = agent.analyzer.analyze_mentions(sr.raw_text, agent.brand, agent.industry, sr.query)
+                    analysis["query"] = sr.query
+                    analysis["platform"] = sr.platform
+                    agent.analysis_results.append(analysis)
+                    brands = analysis.get("brands_mentioned", [])
+                    emit("agent", {"id": aid, "status": "done", "label": "LLM Analyzer", "detail": f"Found: {', '.join(brands[:4])}" if brands else "No brands found"})
+
+            # Phase 5: stop browser
+            loop.run_until_complete(agent.scanner.stop())
+
+            # Phase 6: build report
+            emit("agent", {"id": "report-builder", "status": "running", "label": "Report Builder", "detail": "Scoring & recommendations..."})
+            report = agent._build_report()
+            emit("agent", {"id": "report-builder", "status": "done", "label": "Report Builder", "detail": f"Score: {report.get('visibility_score', 0):.1f}/100"})
+
+            loop.close()
+            emit("result", report)
+        except Exception as e:
+            traceback.print_exc()
+            emit("error", {"error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run_agent, daemon=True).start()
+
+    def generate():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield item
+
+    return Response(generate(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/health")
