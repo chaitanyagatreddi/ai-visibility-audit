@@ -7,7 +7,7 @@ Enter a brand name, get a live AI visibility report.
 
 Run locally:
   pip3 install flask
-  export BROWSERBASE_API_KEY=... BROWSERBASE_PROJECT_ID=... ANTHROPIC_API_KEY=...
+  export BROWSERBASE_API_KEY=... BROWSERBASE_PROJECT_ID=... OPENAI_API_KEY=...
   python3 app.py
 
 Deploy anywhere: Replit, Railway, Render, Vercel (serverless).
@@ -358,7 +358,7 @@ def health():
     return jsonify({
         "status": "ok",
         "browserbase": bool(os.environ.get("BROWSERBASE_API_KEY")),
-        "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "anthropic": bool(os.environ.get("OPENAI_API_KEY")),
         "timestamp": datetime.utcnow().isoformat(),
     })
 
@@ -368,5 +368,5 @@ if __name__ == "__main__":
     print(f"\n🤖 AI Visibility Audit Agent")
     print(f"   http://localhost:{port}")
     print(f"   Browserbase: {'✅' if os.environ.get('BROWSERBASE_API_KEY') else '❌'}")
-    print(f"   Anthropic: {'✅' if os.environ.get('ANTHROPIC_API_KEY') else '❌'}")
+    print(f"   OpenAI: {'✅' if os.environ.get('OPENAI_API_KEY') else '❌'}")
     app.run(host="0.0.0.0", port=port, debug=True)

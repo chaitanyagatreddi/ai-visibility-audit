@@ -40,9 +40,9 @@ from typing import Optional
 def check_deps():
     missing = []
     try:
-        import anthropic
+        import openai
     except ImportError:
-        missing.append("anthropic")
+        missing.append("openai")
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -58,7 +58,7 @@ def check_deps():
 
 check_deps()
 
-import anthropic
+import openai
 from playwright.async_api import async_playwright
 from browserbase import Browserbase
 
@@ -71,7 +71,7 @@ from scanner import (
 
 BB_API_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
 BB_PROJECT_ID = os.environ.get("BROWSERBASE_PROJECT_ID", "")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 PLATFORMS = {
     "google_aio": {
@@ -312,10 +312,10 @@ class BrowserScanner:
 # ── Claude Analyzer ───────────────────────────────────────────────
 
 class ClaudeAnalyzer:
-    """Uses Claude to analyze scan results for brand mentions."""
+    """Uses LLM to analyze scan results for brand mentions."""
 
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+        self.client = openai.OpenAI(api_key=OPENAI_KEY)
 
     def generate_smart_queries(self, brand: str, industry: str, city: str, url: str = "", max_queries: int = 5) -> list:
         """Use Claude to generate relevant search queries for ANY brand."""
@@ -336,12 +336,12 @@ Rules:
 Return a JSON array of strings only. No markdown. Example: ["best crm software for startups", "freshworks vs salesforce"]"""
 
         try:
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=300,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = response.content[0].text.strip()
+            text = response.choices[0].message.content.strip()
             start = text.find("[")
             end = text.rfind("]") + 1
             if start >= 0 and end > start:
@@ -373,12 +373,12 @@ Return JSON only. No markdown. Format:
 }}"""
 
         try:
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = response.content[0].text.strip()
+            text = response.choices[0].message.content.strip()
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
@@ -422,12 +422,12 @@ Return JSON only. No markdown. Format:
 }}"""
 
         try:
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",  # swap to claude-4-sonnet when available
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = response.content[0].text.strip()
+            text = response.choices[0].message.content.strip()
             # Try to parse JSON from response
             if text.startswith("{"):
                 return json.loads(text)
