@@ -64,7 +64,7 @@ from browserbase import Browserbase
 
 from scanner import (
     VisibilityAudit, detect_brand_mentions, build_audit_report,
-    generate_queries, KNOWN_BRANDS, GEO_STRATEGIES,
+    generate_queries, KNOWN_BRANDS, GEO_STRATEGIES, QUERY_TEMPLATES,
 )
 
 # ── Config ────────────────────────────────────────────────────────
