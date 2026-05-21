@@ -755,8 +755,8 @@ async def main():
     if not BB_PROJECT_ID:
         print("❌ BROWSERBASE_PROJECT_ID not set")
         sys.exit(1)
-    if not ANTHROPIC_KEY:
-        print("❌ ANTHROPIC_API_KEY not set")
+    if not OPENAI_KEY:
+        print("❌ OPENAI_API_KEY not set")
         sys.exit(1)
 
     # Run agent

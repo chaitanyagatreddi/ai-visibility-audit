@@ -338,13 +338,16 @@ def build_audit_report(audit: VisibilityAudit) -> dict:
     audit.gaps = generate_gap_analysis(audit)
     audit.recommendations = generate_recommendations(audit)
 
-    # Build competitor leaderboard
+    # Build competitor leaderboard from mentions + brands_found
     competitor_counts = {}
     for qr in audit.queries:
         qr_data = qr if isinstance(qr, dict) else asdict(qr)
         for m in qr_data.get("mentions", []):
             brand_name = m.get("brand", "") if isinstance(m, dict) else str(m)
-            if brand_name.lower() != audit.brand.lower():
+            if brand_name and brand_name.lower() != audit.brand.lower():
+                competitor_counts[brand_name] = competitor_counts.get(brand_name, 0) + 1
+        for brand_name in qr_data.get("brands_found", []):
+            if brand_name and brand_name.lower() != audit.brand.lower() and brand_name not in competitor_counts:
                 competitor_counts[brand_name] = competitor_counts.get(brand_name, 0) + 1
 
     audit.competitor_mentions = dict(
