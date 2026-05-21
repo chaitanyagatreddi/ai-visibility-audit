@@ -350,12 +350,13 @@ Return a JSON array of strings only. No markdown. Example: ["best crm software f
             print(f"  ⚠️  Smart query generation failed: {e}")
 
         # Fallback to generic queries
+        ind = industry.replace('_', ' ') if industry and industry != 'other' else 'software'
         return [
-            f"best {industry.replace('_', ' ')} {city}",
-            f"top {industry.replace('_', ' ')} companies {city}",
+            f"best {ind} companies {city}",
+            f"top {ind} tools {city}",
             f"{brand} reviews",
             f"{brand} alternatives",
-            f"recommended {industry.replace('_', ' ')} tools",
+            f"recommended {ind} {city}",
         ][:max_queries]
 
     def detect_brand_from_url(self, url: str) -> dict:
@@ -367,7 +368,7 @@ URL: {url}
 Return JSON only. No markdown. Format:
 {{
   "brand": "BrandName",
-  "industry": "one of: saas, d2c_fashion, health_wellness, fintech, edtech, ecommerce, agency, media, other",
+  "industry": "one of: saas, d2c_fashion, health_wellness, fintech, edtech, ecommerce, agency, media, cloud_telephony, cybersecurity, devtools, martech, hrtech, logistics, real_estate, travel, food_delivery",
   "description": "one line about what this company does"
 }}"""
 
@@ -402,7 +403,7 @@ Return JSON only. No markdown. Format:
 Query: "{query}"
 Target brand: {target_brand}
 Industry: {industry}
-Known brands in this space: {', '.join(known[:15])}
+Known brands in this space: {', '.join(known[:15]) if known else 'None pre-loaded -- extract ALL brand/company names you find'}
 
 AI Answer text:
 ---
