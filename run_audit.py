@@ -250,8 +250,8 @@ def format_report(report: dict) -> str:
             lines.append("")
 
     lines.append(f"{'='*60}")
-    lines.append(f"  Powered by Writesonic AI Visibility Audit")
-    lines.append(f"  Crazyheads 2.0 x Writesonic GEO Platform")
+    lines.append(f"  Powered by Batman AI Visibility Audit")
+    lines.append(f"  Batman GEO Platform")
     lines.append(f"{'='*60}")
 
     return "\n".join(lines)

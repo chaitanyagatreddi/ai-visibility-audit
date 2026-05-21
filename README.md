@@ -100,4 +100,4 @@ run_audit.py      -- CLI runner with demo data
 
 ---
 
-*Crazyheads 2.0 x Writesonic GEO Platform*
+*Batman — AI Visibility Audit*

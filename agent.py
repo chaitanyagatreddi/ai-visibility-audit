@@ -724,8 +724,8 @@ def format_report(report: dict) -> str:
             lines.append("")
 
     lines.append(f"{'='*60}")
-    lines.append(f"  Powered by: Browserbase + Claude + Writesonic GEO Engine")
-    lines.append(f"  Agent: Crazyheads 2.0 x Writesonic")
+    lines.append(f"  Powered by: Browserbase + OpenAI + GEO Engine")
+    lines.append(f"  Agent: Batman")
     lines.append(f"{'='*60}")
 
     return "\n".join(lines)

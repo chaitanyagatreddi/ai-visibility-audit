@@ -13,8 +13,7 @@ Uses Browserbase MCP for headless browser scanning.
 This script is orchestrated by Claude Code -- it calls Browserbase MCP tools
 through the agent, not directly via API.
 
-For the Writesonic PM demo: Crazyheads 2.0 agency pitching GEO services
-to Bangalore D2C and SaaS brands.
+Batman AI Visibility Audit - GEO services for brands.
 """
 
 import json
