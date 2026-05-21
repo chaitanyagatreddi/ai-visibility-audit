@@ -268,7 +268,7 @@ async function startAudit() {
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
 
-      const lines = buffer.split('\n\n');
+      const lines = buffer.split(String.fromCharCode(10)+String.fromCharCode(10));
       buffer = lines.pop();
 
       for (const block of lines) {
