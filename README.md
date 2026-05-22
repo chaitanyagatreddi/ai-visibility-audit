@@ -147,6 +147,31 @@ python3 agent.py --brand Kapiva --industry health_wellness --queries 3
 - [Playwright](https://playwright.dev) — Browser automation
 - [Flask](https://flask.palletsprojects.com) — Web framework
 
+## Contributing
+
+This project is open source while in freemium. Contributions welcome.
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add your feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+All PRs are reviewed before merging. Keep changes focused and include a clear description.
+
+### Ideas for contributions
+
+- Add ChatGPT web scanning (third AI platform)
+- Support more industries beyond the current 5
+- Improve brand detection with fuzzy matching
+- Add historical tracking (scan same brand over time)
+- Export reports as PDF
+- Add more GEO strategies from recent research
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
+
 ---
 
 *Batman — AI Visibility Audit*
