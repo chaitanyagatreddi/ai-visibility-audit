@@ -18,6 +18,8 @@ import os
 import re
 import sys
 import time
+import urllib.request
+import urllib.error
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -347,6 +349,75 @@ class GitHubBrowserScanner:
 
         return contributor
 
+    # ── Public email crawling ────────────────────────────────────
+
+    @staticmethod
+    def _fetch_json(url: str) -> list | dict | None:
+        """Fetch JSON from a public URL (no auth). Returns None on error."""
+        req = urllib.request.Request(url, headers={"User-Agent": "GitHubRadar/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read())
+        except (urllib.error.URLError, json.JSONDecodeError, Exception):
+            return None
+
+    @staticmethod
+    def crawl_public_emails(username: str) -> list[str]:
+        """Crawl publicly available emails for a GitHub user.
+
+        Sources (all public, no auth needed):
+        1. GitHub Events API — PushEvent payloads contain commit author emails
+        2. GitHub .patch endpoint — commit patches expose Author: name <email>
+        3. Profile page email (already scraped in get_profile)
+
+        Returns deduplicated list of emails, filtering out noreply addresses.
+        """
+        emails: set[str] = set()
+        NOREPLY = {"noreply@github.com", "users.noreply.github.com"}
+
+        # Source 1: Events API — /users/{user}/events/public
+        events = GitHubBrowserScanner._fetch_json(
+            f"https://api.github.com/users/{username}/events/public"
+        )
+        if isinstance(events, list):
+            for event in events:
+                if event.get("type") == "PushEvent":
+                    for commit in event.get("payload", {}).get("commits", []):
+                        email = commit.get("author", {}).get("email", "")
+                        if email and not any(nr in email for nr in NOREPLY):
+                            emails.add(email.lower())
+
+        # Source 2: Recent repo commit .patch files
+        # Get user's repos, check latest commit patch for Author email
+        repos_data = GitHubBrowserScanner._fetch_json(
+            f"https://api.github.com/users/{username}/repos?sort=pushed&per_page=3"
+        )
+        if isinstance(repos_data, list):
+            for repo in repos_data[:3]:
+                repo_full = repo.get("full_name", "")
+                if not repo_full:
+                    continue
+                commits = GitHubBrowserScanner._fetch_json(
+                    f"https://api.github.com/repos/{repo_full}/commits?author={username}&per_page=1"
+                )
+                if isinstance(commits, list) and commits:
+                    sha = commits[0].get("sha", "")
+                    if sha:
+                        patch_url = f"https://github.com/{repo_full}/commit/{sha}.patch"
+                        try:
+                            req = urllib.request.Request(patch_url, headers={"User-Agent": "GitHubRadar/1.0"})
+                            with urllib.request.urlopen(req, timeout=10) as resp:
+                                patch_text = resp.read().decode("utf-8", errors="ignore")[:2000]
+                            # Extract "From: Name <email>" or "Author: Name <email>"
+                            for match in re.finditer(r'(?:From|Author):\s*[^<]*<([^>]+)>', patch_text):
+                                email = match.group(1).lower()
+                                if not any(nr in email for nr in NOREPLY):
+                                    emails.add(email)
+                        except Exception:
+                            pass
+
+        return sorted(emails)
+
     async def stop(self):
         try:
             if self.browser:
@@ -539,6 +610,20 @@ class GitHubRadarAgent:
             for i, contributor in enumerate(top_to_profile):
                 emit("profiling", f"👤 Profiling @{contributor.username} ({i+1}/{len(top_to_profile)})")
                 contributor = await self.scanner.get_profile(contributor)
+
+                # Crawl public emails from Events API + commit patches
+                emit("crawling_email", f"📧 Crawling public emails for @{contributor.username}...")
+                crawled_emails = self.scanner.crawl_public_emails(contributor.username)
+                if crawled_emails:
+                    # Merge with profile email if present
+                    all_emails = set(crawled_emails)
+                    if contributor.email:
+                        all_emails.add(contributor.email.lower())
+                    contributor.email = ", ".join(sorted(all_emails))
+                    emit("email_found", f"📧 @{contributor.username} → {contributor.email}")
+                else:
+                    emit("email_none", f"📧 @{contributor.username} — no public email found")
+
                 emit("profile_done", f"@{contributor.username} — {contributor.company or contributor.bio[:50] or 'no bio'}")
 
             # Stop browser
@@ -605,8 +690,11 @@ async def main():
     for c in report.get("top_contributors", [])[:10]:
         tier = c.get("tier", "?")
         score = c.get("activity_score", 0)
+        email = c.get("email", "") or "—"
         summary = c.get("summary", c.get("bio", ""))[:70]
-        print(f"  [{tier:8}] @{c['username']:<20} score={score:>3}  {summary}")
+        print(f"  [{tier:8}] @{c['username']:<20} score={score:>3}  📧 {email}")
+        if summary:
+            print(f"             {summary}")
 
     # Save
     out = f"github_radar_{args.keyword.replace(' ', '_')}.json"
