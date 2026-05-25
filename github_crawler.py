@@ -99,6 +99,10 @@ class GitHubBrowserScanner:
         print("  ✅ Browser connected")
         return self
 
+    # Blacklisted prefixes — not real repos
+    SKIP_OWNERS = {"sponsors", "search", "trending", "explore", "topics",
+                   "marketplace", "features", "enterprise", "collections"}
+
     async def search_repos(self, keyword: str, max_repos: int = 5) -> list[Repo]:
         """Search GitHub for repos matching the keyword, sorted by stars."""
         url = (
@@ -111,45 +115,53 @@ class GitHubBrowserScanner:
         try:
             await self.page.goto(url, timeout=20000)
             await self.page.wait_for_load_state("domcontentloaded")
-            await asyncio.sleep(3)
+            await asyncio.sleep(4)
 
-            # Each repo result
-            items = await self.page.query_selector_all("[data-testid='results-list'] > div, .repo-list-item, li.repo-list-item")
-            if not items:
-                # Fallback selector for GitHub's newer layout
-                items = await self.page.query_selector_all("div.search-title, a[data-hydro-click]")
-
-            # Try a broader approach — get all repo links from search results
-            links = await self.page.query_selector_all("a[href*='/'][data-hydro-click], .search-result-item a[href]")
             seen = set()
-            for link in links:
-                href = await link.get_attribute("href") or ""
-                # Filter to owner/repo pattern
+
+            # Strategy 1: GitHub's current search result layout
+            # Each result has an <h3> with a link like /owner/repo
+            result_links = await self.page.query_selector_all(
+                "div[data-testid='results-list'] a[href*='/'], "
+                ".search-result-item a[href], "
+                "ul.repo-list li a[href]"
+            )
+            for link in result_links:
+                href = (await link.get_attribute("href") or "").strip()
                 parts = href.strip("/").split("/")
-                if len(parts) == 2 and "." not in parts[0] and parts[1]:
+                if (len(parts) == 2
+                        and parts[0] not in self.SKIP_OWNERS
+                        and parts[1]
+                        and "." not in parts[0]
+                        and not parts[1].startswith(".")):
                     full = f"https://github.com/{parts[0]}/{parts[1]}"
                     if full not in seen:
                         seen.add(full)
-                        repos.append(Repo(
-                            name=f"{parts[0]}/{parts[1]}",
-                            url=full,
-                        ))
+                        repos.append(Repo(name=f"{parts[0]}/{parts[1]}", url=full))
                 if len(repos) >= max_repos:
                     break
 
-            # If still empty, parse page text for repo names
-            if not repos:
-                body = await self.page.inner_text("body")
-                matches = re.findall(r'([a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+)', body)
-                for m in matches:
-                    if "/" in m and len(m.split("/")) == 2:
-                        name = m.strip()
-                        url_ = f"https://github.com/{name}"
-                        if url_ not in seen:
-                            seen.add(url_)
-                            repos.append(Repo(name=name, url=url_))
-                        if len(repos) >= max_repos:
-                            break
+            # Strategy 2: parse all links on the page, filter aggressively
+            if len(repos) < max_repos:
+                all_links = await self.page.query_selector_all("a[href]")
+                for link in all_links:
+                    href = (await link.get_attribute("href") or "").strip()
+                    if not href.startswith("/"):
+                        continue
+                    parts = href.strip("/").split("/")
+                    if (len(parts) == 2
+                            and parts[0] not in self.SKIP_OWNERS
+                            and parts[1]
+                            and len(parts[0]) > 1
+                            and len(parts[1]) > 1
+                            and "." not in parts[0]
+                            and not any(x in parts[1] for x in ["?", "#", "."])):
+                        full = f"https://github.com/{parts[0]}/{parts[1]}"
+                        if full not in seen:
+                            seen.add(full)
+                            repos.append(Repo(name=f"{parts[0]}/{parts[1]}", url=full))
+                    if len(repos) >= max_repos:
+                        break
 
         except Exception as e:
             print(f"  ⚠️  Search error: {e}")
@@ -196,58 +208,50 @@ class GitHubBrowserScanner:
         return repo
 
     async def get_contributors(self, repo: Repo, max_contributors: int = 8) -> list[Contributor]:
-        """Visit /contributors and extract top contributor usernames + commits."""
-        url = f"{repo.url}/graphs/contributors"
+        """Scrape contributors from the repo's /contributors page."""
         contributors = []
+        seen_users: set = set()
 
+        # /contributors page lists avatars with hovercard links — most reliable
+        url = f"{repo.url}/contributors"
         try:
-            await self.page.goto(url, timeout=15000)
+            await self.page.goto(url, timeout=20000)
             await self.page.wait_for_load_state("domcontentloaded")
-            await asyncio.sleep(3)  # contributor graph loads async
+            await asyncio.sleep(3)
 
-            # Extract contributor cards
-            cards = await self.page.query_selector_all("li.contrib-person, .contrib-person")
-
-            for card in cards[:max_contributors]:
-                try:
-                    # Username
-                    link_el = await card.query_selector("a[href*='/']")
-                    href = await link_el.get_attribute("href") if link_el else ""
-                    username = href.strip("/").split("/")[-1] if href else ""
-                    if not username:
-                        continue
-
-                    # Commits count
-                    commits = 0
-                    try:
-                        commit_el = await card.query_selector("span.num, .cmeta span")
-                        if commit_el:
-                            txt = (await commit_el.inner_text()).replace(",", "").strip()
-                            commits = int(re.sub(r"[^\d]", "", txt) or "0")
-                    except:
-                        pass
-
+            # Strategy 1: hovercard user links
+            links = await self.page.query_selector_all("a[data-hovercard-type='user']")
+            for link in links:
+                href = (await link.get_attribute("href") or "").strip("/")
+                if href and "/" not in href and href not in seen_users:
+                    seen_users.add(href)
                     contributors.append(Contributor(
-                        username=username,
-                        profile_url=f"https://github.com/{username}",
-                        commits=commits,
+                        username=href,
+                        profile_url=f"https://github.com/{href}",
                         repos_contributed=[repo.name],
                     ))
-                except:
-                    continue
+                if len(contributors) >= max_contributors:
+                    break
 
-            # Fallback: parse contributor links from page
+            # Strategy 2: any /username style links that look like GitHub usernames
             if not contributors:
-                links = await self.page.query_selector_all("a[href^='/'][data-hovercard-type='user']")
-                seen_users = set()
-                for link in links:
-                    href = await link.get_attribute("href") or ""
-                    username = href.strip("/")
-                    if username and "/" not in username and username not in seen_users:
-                        seen_users.add(username)
+                all_links = await self.page.query_selector_all("a[href]")
+                SKIP = {"login", "signup", "about", "pricing", "features",
+                        "enterprise", "marketplace", "sponsors", "explore",
+                        "topics", "trending", "collections", "pulls", "issues",
+                        "actions", "projects", "wiki", "security", "pulse",
+                        "graphs", "settings", "contributors", "commits"}
+                for link in all_links:
+                    href = (await link.get_attribute("href") or "").strip("/")
+                    if (href
+                            and "/" not in href
+                            and re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-]{0,37}$', href)
+                            and href.lower() not in SKIP
+                            and href not in seen_users):
+                        seen_users.add(href)
                         contributors.append(Contributor(
-                            username=username,
-                            profile_url=f"https://github.com/{username}",
+                            username=href,
+                            profile_url=f"https://github.com/{href}",
                             repos_contributed=[repo.name],
                         ))
                     if len(contributors) >= max_contributors:
@@ -256,7 +260,7 @@ class GitHubBrowserScanner:
         except Exception as e:
             print(f"  ⚠️  Contributors error for {repo.name}: {e}")
 
-        return contributors
+        return contributors[:max_contributors]
 
     async def get_profile(self, contributor: Contributor) -> Contributor:
         """Visit a contributor's GitHub profile and extract details."""
