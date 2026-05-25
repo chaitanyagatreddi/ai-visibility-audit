@@ -764,64 +764,64 @@ function openDrawer(c) {
   const orgs = (c.orgs || []).map(o =>
     '<span class="drawer-tag">🏢 ' + o + '</span>').join('');
 
-  document.getElementById('drawerContent').innerHTML = \`
-    <img class="drawer-avatar" src="https://github.com/\${c.username}.png?size=128" onerror="this.src='https://github.com/ghost.png'">
-    <div class="drawer-name">\${c.name || c.username}</div>
-    <div class="drawer-handle">@\${c.username} &nbsp;·&nbsp; <span style="color:\${tc};background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">\${tier}</span></div>
+  document.getElementById('drawerContent').innerHTML = `
+    <img class="drawer-avatar" src="https://github.com/${c.username}.png?size=128" onerror="this.src='https://github.com/ghost.png'">
+    <div class="drawer-name">${c.name || c.username}</div>
+    <div class="drawer-handle">@${c.username} &nbsp;·&nbsp; <span style="color:${tc};background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">${tier}</span></div>
 
     <div style="margin-top:10px">
-      <a href="\${c.profile_url}" target="_blank" class="gh-btn">🐙 GitHub Profile</a>
-      \${c.email ? '<a href="mailto:' + c.email + '" class="email-btn">✉️ ' + c.email + '</a>' : ''}
+      <a href="${c.profile_url}" target="_blank" class="gh-btn">🐙 GitHub Profile</a>
+      ${c.email ? '<a href="mailto:' + c.email + '" class="email-btn">✉️ ' + c.email + '</a>' : ''}
     </div>
 
     <div class="drawer-section">
       <div class="drawer-section-title">Activity Score</div>
       <div class="drawer-score">
-        <div class="drawer-score-num">\${score}</div>
-        <div class="drawer-score-bar"><div class="drawer-score-fill" style="width:\${score}%"></div></div>
+        <div class="drawer-score-num">${score}</div>
+        <div class="drawer-score-bar"><div class="drawer-score-fill" style="width:${score}%"></div></div>
         <div style="font-size:12px;color:#8b949e">/100</div>
       </div>
     </div>
 
-    \${c.bio ? \`<div class="drawer-section">
+    ${c.bio ? `<div class="drawer-section">
       <div class="drawer-section-title">Bio</div>
-      <div class="drawer-bio">\${c.bio}</div>
-    </div>\` : ''}
+      <div class="drawer-bio">${c.bio}</div>
+    </div>` : ''}
 
-    \${c.summary ? \`<div class="drawer-section">
+    ${c.summary ? `<div class="drawer-section">
       <div class="drawer-section-title">AI Summary</div>
-      <div class="drawer-summary">\${c.summary}</div>
-    </div>\` : ''}
+      <div class="drawer-summary">${c.summary}</div>
+    </div>` : ''}
 
     <div class="drawer-section">
       <div class="drawer-section-title">Details</div>
       <div class="drawer-meta">
-        \${c.company ? '<span>🏢 <strong>' + c.company + '</strong></span>' : ''}
-        \${c.location ? '<span>📍 <strong>' + c.location + '</strong></span>' : ''}
-        \${c.commits ? '<span>💻 <strong>' + c.commits + ' commits</strong> across scanned repos</span>' : ''}
+        ${c.company ? '<span>🏢 <strong>' + c.company + '</strong></span>' : ''}
+        ${c.location ? '<span>📍 <strong>' + c.location + '</strong></span>' : ''}
+        ${c.commits ? '<span>💻 <strong>' + c.commits + ' commits</strong> across scanned repos</span>' : ''}
       </div>
     </div>
 
-    \${focusTags ? \`<div class="drawer-section">
+    ${focusTags ? `<div class="drawer-section">
       <div class="drawer-section-title">Focus Areas</div>
-      <div>\${focusTags}</div>
-    </div>\` : ''}
+      <div>${focusTags}</div>
+    </div>` : ''}
 
-    \${reposHtml ? \`<div class="drawer-section">
+    ${reposHtml ? `<div class="drawer-section">
       <div class="drawer-section-title">Contributed To</div>
-      \${reposHtml}
-    </div>\` : ''}
+      ${reposHtml}
+    </div>` : ''}
 
-    \${pinned ? \`<div class="drawer-section">
+    ${pinned ? `<div class="drawer-section">
       <div class="drawer-section-title">Pinned Repos</div>
-      \${pinned}
-    </div>\` : ''}
+      ${pinned}
+    </div>` : ''}
 
-    \${orgs ? \`<div class="drawer-section">
+    ${orgs ? `<div class="drawer-section">
       <div class="drawer-section-title">Organizations</div>
-      <div>\${orgs}</div>
-    </div>\` : ''}
-  \`;
+      <div>${orgs}</div>
+    </div>` : ''}
+  `;
 
   document.getElementById('profileDrawer').classList.add('open');
   document.getElementById('drawerOverlay').classList.add('open');
