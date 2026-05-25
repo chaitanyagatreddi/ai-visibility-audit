@@ -32,6 +32,7 @@ import openai
 BB_API_KEY     = os.environ.get("BROWSERBASE_API_KEY", "")
 BB_PROJECT_ID  = os.environ.get("BROWSERBASE_PROJECT_ID", "")
 OPENAI_KEY     = os.environ.get("OPENAI_API_KEY", "")
+GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
 
 # ── Data structures ───────────────────────────────────────────────
 
@@ -325,22 +326,29 @@ class GitHubBrowserScanner:
             except:
                 pass
 
-            # Email (publicly visible on profile)
+            # Email (publicly visible on profile page)
             try:
-                # GitHub renders email as a link with mailto: or plain text with envelope icon
-                email_el = await self.page.query_selector(
-                    "a[href^='mailto:'], li[itemprop='email'], "
-                    ".p-email, span[itemprop='email']"
-                )
-                if email_el:
-                    raw = await email_el.inner_text()
-                    contributor.email = raw.strip()
+                # Strategy 1: mailto link (most reliable)
+                mailto_el = await self.page.query_selector("a[href^='mailto:']")
+                if mailto_el:
+                    href = await mailto_el.get_attribute("href")
+                    contributor.email = href.replace("mailto:", "").strip()
                 else:
-                    # Fallback: scan page text for email pattern near the profile header
-                    page_text = await self.page.inner_text(".vcard-details") if await self.page.query_selector(".vcard-details") else ""
-                    match = re.search(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", page_text)
-                    if match:
-                        contributor.email = match.group(0)
+                    # Strategy 2: li with itemprop="email" (GitHub's vcard pattern)
+                    email_li = await self.page.query_selector(
+                        "li[itemprop='email'], .p-email, span[itemprop='email']"
+                    )
+                    if email_li:
+                        raw = await email_li.inner_text()
+                        contributor.email = raw.strip()
+                    else:
+                        # Strategy 3: any li in vcard-details containing @ symbol
+                        vcard = await self.page.query_selector(".vcard-details")
+                        if vcard:
+                            page_text = await vcard.inner_text()
+                            match = re.search(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", page_text)
+                            if match:
+                                contributor.email = match.group(0)
             except:
                 pass
 
@@ -353,8 +361,11 @@ class GitHubBrowserScanner:
 
     @staticmethod
     def _fetch_json(url: str) -> list | dict | None:
-        """Fetch JSON from a public URL (no auth). Returns None on error."""
-        req = urllib.request.Request(url, headers={"User-Agent": "GitHubRadar/1.0"})
+        """Fetch JSON from GitHub API. Uses GITHUB_TOKEN if available (5000 req/hr vs 60)."""
+        headers = {"User-Agent": "GitHubRadar/1.0", "Accept": "application/vnd.github.v3+json"}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read())
@@ -373,27 +384,34 @@ class GitHubBrowserScanner:
         Returns deduplicated list of emails, filtering out noreply addresses.
         """
         emails: set[str] = set()
-        NOREPLY = {"noreply@github.com", "users.noreply.github.com"}
+        NOREPLY_PATTERNS = ["noreply@github.com", "users.noreply.github.com", "@noreply"]
 
-        # Source 1: Events API — /users/{user}/events/public
+        def is_real_email(e: str) -> bool:
+            e = e.lower().strip()
+            if not e or "@" not in e:
+                return False
+            return not any(p in e for p in NOREPLY_PATTERNS)
+
+        # Source 1: Events API — PushEvent commits sometimes include author email
         events = GitHubBrowserScanner._fetch_json(
-            f"https://api.github.com/users/{username}/events/public"
+            f"https://api.github.com/users/{username}/events/public?per_page=100"
         )
         if isinstance(events, list):
             for event in events:
                 if event.get("type") == "PushEvent":
                     for commit in event.get("payload", {}).get("commits", []):
                         email = commit.get("author", {}).get("email", "")
-                        if email and not any(nr in email for nr in NOREPLY):
-                            emails.add(email.lower())
+                        if is_real_email(email):
+                            emails.add(email.lower().strip())
 
-        # Source 2: Recent repo commit .patch files
-        # Get user's repos, check latest commit patch for Author email
+        # Source 2: Commit .patch files — most reliable, exposes git Author: email
         repos_data = GitHubBrowserScanner._fetch_json(
-            f"https://api.github.com/users/{username}/repos?sort=pushed&per_page=3"
+            f"https://api.github.com/users/{username}/repos?sort=pushed&per_page=5"
         )
         if isinstance(repos_data, list):
-            for repo in repos_data[:3]:
+            for repo in repos_data[:5]:
+                if emails:
+                    break  # already found one, stop burning API budget
                 repo_full = repo.get("full_name", "")
                 if not repo_full:
                     continue
@@ -402,17 +420,24 @@ class GitHubBrowserScanner:
                 )
                 if isinstance(commits, list) and commits:
                     sha = commits[0].get("sha", "")
-                    if sha:
+                    # Also try commit API for email directly
+                    commit_detail = commits[0].get("commit", {})
+                    direct_email = commit_detail.get("author", {}).get("email", "")
+                    if is_real_email(direct_email):
+                        emails.add(direct_email.lower().strip())
+                    if sha and not emails:
                         patch_url = f"https://github.com/{repo_full}/commit/{sha}.patch"
                         try:
-                            req = urllib.request.Request(patch_url, headers={"User-Agent": "GitHubRadar/1.0"})
+                            headers = {"User-Agent": "GitHubRadar/1.0"}
+                            if GITHUB_TOKEN:
+                                headers["Authorization"] = f"token {GITHUB_TOKEN}"
+                            req = urllib.request.Request(patch_url, headers=headers)
                             with urllib.request.urlopen(req, timeout=10) as resp:
-                                patch_text = resp.read().decode("utf-8", errors="ignore")[:2000]
-                            # Extract "From: Name <email>" or "Author: Name <email>"
+                                patch_text = resp.read().decode("utf-8", errors="ignore")[:3000]
                             for match in re.finditer(r'(?:From|Author):\s*[^<]*<([^>]+)>', patch_text):
-                                email = match.group(1).lower()
-                                if not any(nr in email for nr in NOREPLY):
-                                    emails.add(email)
+                                e = match.group(1).lower().strip()
+                                if is_real_email(e):
+                                    emails.add(e)
                         except Exception:
                             pass
 
