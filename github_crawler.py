@@ -462,7 +462,8 @@ class GitHubAnalyzer:
     """Uses gpt-4o-mini to score and summarize contributors."""
 
     def __init__(self):
-        self.client = openai.OpenAI(api_key=OPENAI_KEY)
+        key = os.environ.get("OPENAI_API_KEY", "") or OPENAI_KEY
+        self.client = openai.OpenAI(api_key=key)
 
     def score_contributor(self, contributor: Contributor, keyword: str) -> dict:
         """Score and summarize a contributor based on their profile."""
@@ -691,7 +692,8 @@ async def main():
     parser.add_argument("--contributors", type=int, default=6, help="Max contributors per repo")
     args = parser.parse_args()
 
-    if not BB_API_KEY or not BB_PROJECT_ID or not OPENAI_KEY:
+    _openai_key = os.environ.get("OPENAI_API_KEY", "") or OPENAI_KEY
+    if not BB_API_KEY or not BB_PROJECT_ID or not _openai_key:
         print("❌ Set BROWSERBASE_API_KEY, BROWSERBASE_PROJECT_ID, OPENAI_API_KEY")
         sys.exit(1)
 
