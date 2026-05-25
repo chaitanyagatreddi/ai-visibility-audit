@@ -54,6 +54,7 @@ class Contributor:
     bio: str = ""
     pinned_repos: list = field(default_factory=list)
     orgs: list = field(default_factory=list)
+    email: str = ""
     activity_score: int = 0
     repos_contributed: list = field(default_factory=list)
 
@@ -318,6 +319,25 @@ class GitHubBrowserScanner:
             except:
                 pass
 
+            # Email (publicly visible on profile)
+            try:
+                # GitHub renders email as a link with mailto: or plain text with envelope icon
+                email_el = await self.page.query_selector(
+                    "a[href^='mailto:'], li[itemprop='email'], "
+                    ".p-email, span[itemprop='email']"
+                )
+                if email_el:
+                    raw = await email_el.inner_text()
+                    contributor.email = raw.strip()
+                else:
+                    # Fallback: scan page text for email pattern near the profile header
+                    page_text = await self.page.inner_text(".vcard-details") if await self.page.query_selector(".vcard-details") else ""
+                    match = re.search(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", page_text)
+                    if match:
+                        contributor.email = match.group(0)
+            except:
+                pass
+
         except Exception as e:
             print(f"  ⚠️  Profile error for {contributor.username}: {e}")
 
@@ -429,6 +449,7 @@ Return JSON only. No markdown:
                     "company": c.company,
                     "location": c.location,
                     "bio": c.bio,
+                    "email": c.email,
                     "activity_score": c.activity_score,
                     "commits": c.commits,
                     "repos_contributed": c.repos_contributed,

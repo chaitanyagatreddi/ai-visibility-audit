@@ -657,6 +657,7 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
         <th>Contributor</th>
         <th>Tier</th>
         <th>Score</th>
+        <th>Email</th>
         <th>Summary</th>
         <th>Repos</th>
       </tr>
@@ -747,6 +748,7 @@ function startScan() {
             '<td><span class="tier tier-' + tier + '">' + tier + '</span></td>' +
             '<td><div style="font-weight:600">' + score + '</div>' +
               '<div class="score-bar"><div class="score-fill" style="width:' + score + '%"></div></div></td>' +
+            '<td style="font-size:12px">' + (c.email ? '<a href="mailto:' + c.email + '" style="color:#58a6ff">' + c.email + '</a>' : '<span style="color:#484f58">—</span>') + '</td>' +
             '<td style="color:#8b949e;font-size:12px">' + (c.summary || c.bio || '—') + '</td>' +
             '<td style="font-size:12px;color:#8b949e">' + (c.repos_contributed || []).join('<br>') + '</td>';
           tbody.appendChild(tr);
