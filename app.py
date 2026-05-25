@@ -596,6 +596,11 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
   .score-fill { height: 100%; border-radius: 3px; background: #58a6ff; }
   .hidden { display: none; }
   label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 4px; }
+  .tool-chip { background: #21262d; border: 1px solid #30363d; border-radius: 20px;
+               padding: 4px 12px; font-size: 12px; color: #8b949e; cursor: pointer;
+               transition: all .15s; user-select: none; }
+  .tool-chip:hover { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,0.08); }
+  .tool-chip.active { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,0.1); }
 </style>
 </head>
 <body>
@@ -606,10 +611,33 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
 </div>
 
 <div class="card">
+  <div style="margin-bottom:12px">
+    <label style="margin-bottom:6px">Popular tools</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+      <span class="tool-chip" onclick="setKeyword('OWASP ZAP')">OWASP ZAP</span>
+      <span class="tool-chip" onclick="setKeyword('nuclei')">Nuclei</span>
+      <span class="tool-chip" onclick="setKeyword('metasploit')">Metasploit</span>
+      <span class="tool-chip" onclick="setKeyword('nmap')">Nmap</span>
+      <span class="tool-chip" onclick="setKeyword('burp suite')">Burp Suite</span>
+      <span class="tool-chip" onclick="setKeyword('trivy')">Trivy</span>
+      <span class="tool-chip" onclick="setKeyword('falco')">Falco</span>
+      <span class="tool-chip" onclick="setKeyword('osquery')">osquery</span>
+      <span class="tool-chip" onclick="setKeyword('semgrep')">Semgrep</span>
+      <span class="tool-chip" onclick="setKeyword('snyk')">Snyk</span>
+      <span class="tool-chip" onclick="setKeyword('wazuh SIEM')">Wazuh</span>
+      <span class="tool-chip" onclick="setKeyword('openvas vulnerability scanner')">OpenVAS</span>
+      <span class="tool-chip" onclick="setKeyword('wireshark')">Wireshark</span>
+      <span class="tool-chip" onclick="setKeyword('suricata IDS')">Suricata</span>
+      <span class="tool-chip" onclick="setKeyword('mimikatz')">Mimikatz</span>
+      <span class="tool-chip" onclick="setKeyword('gobuster')">Gobuster</span>
+      <span class="tool-chip" onclick="setKeyword('sqlmap')">sqlmap</span>
+      <span class="tool-chip" onclick="setKeyword('hashcat')">Hashcat</span>
+    </div>
+  </div>
   <div class="form-row">
     <div style="flex:1; min-width:220px">
-      <label>Keyword / topic</label>
-      <input type="text" id="keyword" placeholder="vulnerability scanner, SIEM, pentest..." value="vulnerability scanner" />
+      <label>Keyword / tool name</label>
+      <input type="text" id="keyword" placeholder="OWASP ZAP, nuclei, SIEM..." value="OWASP ZAP" />
     </div>
     <div>
       <label>Repos to scan</label>
@@ -667,6 +695,12 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+function setKeyword(kw) {
+  document.getElementById('keyword').value = kw;
+  document.querySelectorAll('.tool-chip').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
 function log(msg, highlight=false) {
   const el = document.getElementById('log');
   const line = document.createElement('div');
