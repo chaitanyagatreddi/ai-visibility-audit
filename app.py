@@ -601,6 +601,48 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
                transition: all .15s; user-select: none; }
   .tool-chip:hover { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,0.08); }
   .tool-chip.active { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,0.1); }
+  .contributors-table tbody tr { cursor: pointer; }
+  .contributors-table tbody tr.selected td { background: #1c2128; }
+  /* Profile drawer */
+  .drawer-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99; }
+  .drawer-overlay.open { display:block; }
+  .profile-drawer { position:fixed; top:0; right:-440px; width:420px; height:100vh;
+                    background:#161b22; border-left:1px solid #30363d; z-index:100;
+                    overflow-y:auto; transition:right 0.25s ease; padding:24px; box-sizing:border-box; }
+  .profile-drawer.open { right:0; }
+  .drawer-close { position:absolute; top:16px; right:16px; background:none; border:none;
+                  color:#8b949e; font-size:20px; cursor:pointer; padding:4px 8px; }
+  .drawer-close:hover { color:#e6edf3; background:none; }
+  .drawer-avatar { width:64px; height:64px; border-radius:50%; border:2px solid #30363d; }
+  .drawer-name { font-size:18px; font-weight:700; margin:12px 0 2px; }
+  .drawer-handle { color:#58a6ff; font-size:13px; margin-bottom:12px; }
+  .drawer-section { margin-top:18px; }
+  .drawer-section-title { font-size:11px; font-weight:600; text-transform:uppercase;
+                           color:#8b949e; letter-spacing:.08em; margin-bottom:8px;
+                           padding-bottom:6px; border-bottom:1px solid #21262d; }
+  .drawer-meta { display:flex; flex-direction:column; gap:6px; font-size:13px; color:#8b949e; }
+  .drawer-meta span { display:flex; align-items:center; gap:8px; }
+  .drawer-meta strong { color:#e6edf3; }
+  .drawer-bio { font-size:13px; color:#c9d1d9; line-height:1.6; }
+  .drawer-tag { display:inline-block; background:#21262d; border:1px solid #30363d;
+                border-radius:20px; padding:3px 10px; font-size:11px; color:#8b949e;
+                margin:3px 2px; }
+  .drawer-repo { background:#0d1117; border:1px solid #21262d; border-radius:6px;
+                 padding:8px 12px; font-size:12px; margin-bottom:6px; }
+  .drawer-summary { font-size:13px; color:#c9d1d9; line-height:1.6;
+                    background:#0d1117; border-radius:6px; padding:12px; border:1px solid #21262d; }
+  .drawer-score { display:flex; align-items:center; gap:12px; }
+  .drawer-score-num { font-size:28px; font-weight:700; color:#58a6ff; }
+  .drawer-score-bar { flex:1; height:8px; background:#21262d; border-radius:4px; overflow:hidden; }
+  .drawer-score-fill { height:100%; border-radius:4px; background:linear-gradient(90deg,#1f6feb,#58a6ff); }
+  .email-btn { display:inline-flex; align-items:center; gap:6px; background:rgba(88,166,255,0.1);
+               border:1px solid rgba(88,166,255,0.3); border-radius:6px; padding:7px 14px;
+               color:#58a6ff; font-size:13px; text-decoration:none; margin-top:4px; }
+  .email-btn:hover { background:rgba(88,166,255,0.2); }
+  .gh-btn { display:inline-flex; align-items:center; gap:6px; background:#21262d;
+            border:1px solid #30363d; border-radius:6px; padding:7px 14px;
+            color:#e6edf3; font-size:13px; text-decoration:none; margin-top:4px; margin-left:8px; }
+  .gh-btn:hover { border-color:#58a6ff; }
 </style>
 </head>
 <body>
@@ -694,7 +736,103 @@ GITHUB_RADAR_HTML = """<!DOCTYPE html>
   </table>
 </div>
 
+<!-- Profile Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="profile-drawer" id="profileDrawer">
+  <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  <div id="drawerContent"></div>
+</div>
+
 <script>
+let contributorsData = [];
+
+function openDrawer(c) {
+  const score = Math.min(100, c.activity_score || 0);
+  const tier = c.tier || 'active';
+  const tierColors = { core: '#3fb950', active: '#58a6ff', emerging: '#d29922' };
+  const tc = tierColors[tier] || '#58a6ff';
+
+  const focusTags = (c.focus_areas || []).map(f =>
+    '<span class="drawer-tag">' + f + '</span>').join('');
+
+  const reposHtml = (c.repos_contributed || []).map(r =>
+    '<div class="drawer-repo">📦 ' + r + '</div>').join('');
+
+  const pinned = (c.pinned_repos || []).map(r =>
+    '<div class="drawer-repo">📌 ' + r + '</div>').join('');
+
+  const orgs = (c.orgs || []).map(o =>
+    '<span class="drawer-tag">🏢 ' + o + '</span>').join('');
+
+  document.getElementById('drawerContent').innerHTML = \`
+    <img class="drawer-avatar" src="https://github.com/\${c.username}.png?size=128" onerror="this.src='https://github.com/ghost.png'">
+    <div class="drawer-name">\${c.name || c.username}</div>
+    <div class="drawer-handle">@\${c.username} &nbsp;·&nbsp; <span style="color:\${tc};background:rgba(88,166,255,0.1);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">\${tier}</span></div>
+
+    <div style="margin-top:10px">
+      <a href="\${c.profile_url}" target="_blank" class="gh-btn">🐙 GitHub Profile</a>
+      \${c.email ? '<a href="mailto:' + c.email + '" class="email-btn">✉️ ' + c.email + '</a>' : ''}
+    </div>
+
+    <div class="drawer-section">
+      <div class="drawer-section-title">Activity Score</div>
+      <div class="drawer-score">
+        <div class="drawer-score-num">\${score}</div>
+        <div class="drawer-score-bar"><div class="drawer-score-fill" style="width:\${score}%"></div></div>
+        <div style="font-size:12px;color:#8b949e">/100</div>
+      </div>
+    </div>
+
+    \${c.bio ? \`<div class="drawer-section">
+      <div class="drawer-section-title">Bio</div>
+      <div class="drawer-bio">\${c.bio}</div>
+    </div>\` : ''}
+
+    \${c.summary ? \`<div class="drawer-section">
+      <div class="drawer-section-title">AI Summary</div>
+      <div class="drawer-summary">\${c.summary}</div>
+    </div>\` : ''}
+
+    <div class="drawer-section">
+      <div class="drawer-section-title">Details</div>
+      <div class="drawer-meta">
+        \${c.company ? '<span>🏢 <strong>' + c.company + '</strong></span>' : ''}
+        \${c.location ? '<span>📍 <strong>' + c.location + '</strong></span>' : ''}
+        \${c.commits ? '<span>💻 <strong>' + c.commits + ' commits</strong> across scanned repos</span>' : ''}
+      </div>
+    </div>
+
+    \${focusTags ? \`<div class="drawer-section">
+      <div class="drawer-section-title">Focus Areas</div>
+      <div>\${focusTags}</div>
+    </div>\` : ''}
+
+    \${reposHtml ? \`<div class="drawer-section">
+      <div class="drawer-section-title">Contributed To</div>
+      \${reposHtml}
+    </div>\` : ''}
+
+    \${pinned ? \`<div class="drawer-section">
+      <div class="drawer-section-title">Pinned Repos</div>
+      \${pinned}
+    </div>\` : ''}
+
+    \${orgs ? \`<div class="drawer-section">
+      <div class="drawer-section-title">Organizations</div>
+      <div>\${orgs}</div>
+    </div>\` : ''}
+  \`;
+
+  document.getElementById('profileDrawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('profileDrawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.querySelectorAll('.contributors-table tbody tr.selected').forEach(r => r.classList.remove('selected'));
+}
+
 function setKeyword(kw) {
   document.getElementById('keyword').value = kw;
   document.querySelectorAll('.tool-chip').forEach(c => c.classList.remove('active'));
@@ -769,21 +907,28 @@ function startScan() {
 
       if (type === 'complete' && data.top_contributors) {
         setChip('analysis', 'done');
+        contributorsData = data.top_contributors;
         document.getElementById('contributorsSection').classList.remove('hidden');
         const tbody = document.getElementById('contributorsBody');
         tbody.innerHTML = '';
-        data.top_contributors.forEach(c => {
+        data.top_contributors.forEach((c, idx) => {
           const tier = c.tier || 'active';
           const score = Math.min(100, c.activity_score || 0);
           const tr = document.createElement('tr');
+          tr.title = 'Click to view profile';
+          tr.onclick = function() {
+            document.querySelectorAll('.contributors-table tbody tr.selected').forEach(r => r.classList.remove('selected'));
+            tr.classList.add('selected');
+            openDrawer(c);
+          };
           tr.innerHTML =
-            '<td><a href="' + c.profile_url + '" target="_blank" class="username">@' + c.username + '</a>' +
+            '<td><span class="username">@' + c.username + '</span>' +
               (c.company ? '<br><small style="color:#8b949e">' + c.company + '</small>' : '') + '</td>' +
             '<td><span class="tier tier-' + tier + '">' + tier + '</span></td>' +
             '<td><div style="font-weight:600">' + score + '</div>' +
               '<div class="score-bar"><div class="score-fill" style="width:' + score + '%"></div></div></td>' +
-            '<td style="font-size:12px">' + (c.email ? '<a href="mailto:' + c.email + '" style="color:#58a6ff">' + c.email + '</a>' : '<span style="color:#484f58">—</span>') + '</td>' +
-            '<td style="color:#8b949e;font-size:12px">' + (c.summary || c.bio || '—') + '</td>' +
+            '<td style="font-size:12px">' + (c.email ? '<span style="color:#58a6ff">✉️ ' + c.email + '</span>' : '<span style="color:#484f58">—</span>') + '</td>' +
+            '<td style="color:#8b949e;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (c.summary || c.bio || '—') + '</td>' +
             '<td style="font-size:12px;color:#8b949e">' + (c.repos_contributed || []).join('<br>') + '</td>';
           tbody.appendChild(tr);
         });
